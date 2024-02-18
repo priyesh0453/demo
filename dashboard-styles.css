@@ -69,6 +69,37 @@ p
     margin-bottom: 20px;
 }
 
+#userDetails,
+#canTokenDetails,
+#logoutButton 
+{
+    margin-top: 20px;
+}
+
+#logoutButton button 
+{
+    margin-top: 15px;
+    background-color: #dc3545;
+    color: #fff;
+    border: none;
+    padding: 15px 30px; 
+    border-radius: 8px; 
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.3s;
+}
+
+#logoutButton button:hover 
+{
+    background-color: #c82333;
+    transform: scale(1.05);
+}
+
+#userDetails p,
+#canTokenDetails p 
+{
+    margin: 0;
+}
+
 .table-container 
 {
     margin-top: 30px;
