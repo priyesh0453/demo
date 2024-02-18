@@ -1,0 +1,291 @@
+Wallet address: 0x16dEECbe795517a8F41f9b2aebBDA6281D11d6E1
+Private Key: 581806591520cc3151ec0bb4d02b72130323caae0fb2f8220344737e1fb9b136
+
+1] Without authentication:
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.9;
+
+contract CANFund 
+{
+    struct CAN 
+    {
+        address proprietor;
+        string CANname;
+        string about;
+        uint256 fundNeeded;
+        uint256 timeCutOff;
+        uint256 fundCollected;
+        string poster;
+        address[] benefactors;
+        uint256[] endowments;
+    }
+
+    mapping(uint256 => CAN) public funds;
+    mapping(address => uint256) public userCANBalance;
+
+    uint256 public totalCANs = 0;
+
+    function createCAN(address _proprietor, string memory _CANname, string memory _about, uint256 _fundNeeded, uint256 _timeCutOff, string memory _poster) public returns (uint256) 
+    {
+        CAN storage fund = funds[totalCANs];
+
+        require(fund.timeCutOff < block.timestamp, "Invalid Time Cut Off!");
+
+        fund.proprietor = _proprietor;
+        fund.CANname = _CANname;
+        fund.about = _about;
+        fund.fundNeeded = _fundNeeded;
+        fund.timeCutOff = _timeCutOff;
+        fund.fundCollected = 0;
+        fund.poster = _poster;
+
+        totalCANs++;
+
+        return (totalCANs - 1);
+    }
+
+    function getCANs() public view returns (CAN[] memory) 
+    {
+        CAN[] memory totalFunds = new CAN[](numberOfCampaigns);
+        uint i = 0;
+
+        for(; i < numberOfCampaigns; i++) 
+        {
+            CAN storage tempFund = funds[i];
+            totalFunds[i] = tempFund;
+        }
+
+        return totalFunds;
+    }
+
+    function endowCAN(uint256 _id) public payable 
+    {
+        uint256 fundsEndowing = msg.value;
+
+        CAN storage fund = funds[_id];
+
+        fund.benefactors.push(msg.sender);
+        fund.endowments.push(fundsEndowing);
+
+        uint256 canCredit = ((fundsEndowing * 2) / 100);
+
+        userCANBalance[msg.sender] += canCredit;
+
+        (bool sent,) = payable(fund.proprietor).call{value: fundsEndowing}("");
+
+        if(sent) 
+        {
+            fund.fundCollected = fund.fundCollected + fundsEndowing;
+        }
+    }
+
+    function getBenefactors(uint256 _id) view public returns (address[] memory, uint256[] memory) 
+    {
+        return (funds[_id].benefactors, funds[_id].endowments);
+    }
+}
+
+2] With authentication:
+
+import React, { useState, useEffect } from 'react';
+import Web3 from 'web3';
+import CANFundContract from './contracts/CANFund.json';
+
+const App = () => {
+  const [web3, setWeb3] = useState(null);
+  const [contract, setContract] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [canBalance, setCANBalance] = useState(0);
+
+  useEffect(() => {
+    const initWeb3 = async () => {
+      if (window.ethereum) {
+        const web3Instance = new Web3(window.ethereum);
+        setWeb3(web3Instance);
+
+        try {
+          await window.ethereum.enable();
+          const accounts = await web3Instance.eth.getAccounts();
+          setAccounts(accounts);
+
+          const networkId = await web3Instance.eth.net.getId();
+          const deployedNetwork = CANFundContract.networks[networkId];
+          const instance = new web3Instance.eth.Contract(
+            CANFundContract.abi,
+            deployedNetwork && deployedNetwork.address,
+          );
+
+          setContract(instance);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    };
+
+    initWeb3();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      const message = 'Authentication message';
+
+      // Use MetaMask to sign the message
+      const signature = await web3.eth.personal.sign(message, accounts[0]);
+
+      // Call the Solidity function to authenticate the user
+      await contract.methods.authenticateUser(web3.utils.keccak256(message), ...parseSignature(signature)).call();
+
+      // Continue with your existing logic
+      // For example, fetch user's CAN balance
+      const userCANBalance = await contract.methods.userCANBalance(accounts[0]).call();
+      setCANBalance(userCANBalance);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleDonate = async () => {
+    try {
+      const message = 'Donation message';
+
+      // Use MetaMask to sign the donation message
+      const signature = await web3.eth.personal.sign(message, accounts[0]);
+
+      // Call the Solidity function to donate to a CAN
+      await contract.methods.endowCAN(canId, web3.utils.keccak256(message), ...parseSignature(signature)).send({
+        from: accounts[0],
+        value: web3.utils.toWei(amount, 'ether'),
+      });
+
+      // Continue with your existing logic
+      // For example, update CAN balances or refresh data
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const parseSignature = (signature) => {
+    // Parse the signature into v, r, s values
+    const r = `0x${signature.slice(2, 66)}`;
+    const s = `0x${signature.slice(66, 130)}`;
+    const v = web3.utils.toDecimal(signature.slice(130, 132)) + 27; // Adjust v value
+
+    return [v, r, s];
+  };
+
+  return (
+    <div>
+      <h1>Decentralized Identity Verification Example</h1>
+      <button onClick={handleLogin}>Login with MetaMask</button>
+      <p>Your CAN Balance: {canBalance}</p>
+      {/* Add additional UI components for donations, etc. */}
+    </div>
+  );
+};
+
+export default App;
+
+
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.9;
+
+contract CANFund 
+{
+    event FundCreated(
+        uint256 indexed fundId,
+        address indexed proprietor,
+        string CANname,
+        string about,
+        uint256 fundNeeded,
+        uint256 timeCutOff,
+        string poster
+    );
+
+    struct CAN 
+    {
+        address proprietor;
+        string CANname;
+        string about;
+        uint256 fundNeeded;
+        uint256 timeCutOff;
+        uint256 fundCollected;
+        string poster;
+        address[] benefactors;
+        uint256[] endowments;
+    }
+
+    mapping(uint256 => CAN) public funds;
+    mapping(address => uint256) public userCANBalance;
+    mapping(address => bool) public authenticatedUsers;
+
+    uint256 public totalCANs = 0;
+
+    function authenticateUser(bytes32 message, uint8 v, bytes32 r, bytes32 s) public view returns (bool) 
+    {
+        address signatory = ecrecover(message, v, r, s);
+        return signer == msg.sender;
+    }
+
+    function createCAN(address _proprietor, string memory _CANname, string memory _about, uint256 _fundNeeded, uint256 _timeCutOff, string memory _poster) public returns (uint256) 
+    {
+        CAN storage fund = funds[totalCANs];
+
+        require(fund.timeCutOff < block.timestamp, "Invalid Time Cut Off!");
+
+        fund.proprietor = _proprietor;
+        fund.CANname = _CANname;
+        fund.about = _about;
+        fund.fundNeeded = _fundNeeded;
+        fund.timeCutOff = _timeCutOff;
+        fund.fundCollected = 0;
+        fund.poster = _poster;
+
+        totalCANs++;
+
+        emit FundCreated(totalCANs - 1, _proprietor, _CANname, _about, _fundNeeded, _timeCutOff, _poster);
+
+        return (totalCANs - 1);
+    }
+
+    function getCANs() public view returns (CAN[] memory) 
+    {
+        CAN[] memory totalFunds = new CAN[](numberOfCampaigns);
+        uint i = 0;
+
+        for(; i < numberOfCampaigns; i++) 
+        {
+            CAN storage tempFund = funds[i];
+            totalFunds[i] = tempFund;
+        }
+
+        return totalFunds;
+    }
+
+    function endowCAN(uint256 _id, bytes32 message, uint8 v, bytes32 r, bytes32 s) public payable 
+    {
+        require(authenticateUser(message, v, r, s), "Invalid signature");
+
+        uint256 fundsEndowing = msg.value;
+
+        CAN storage fund = funds[_id];
+
+        fund.benefactors.push(msg.sender);
+        fund.endowments.push(fundsEndowing);
+
+        uint256 canCredit = ((fundsEndowing * 2) / 100);
+
+        userCANBalance[msg.sender] += canCredit;
+
+        (bool sent,) = payable(fund.proprietor).call{value: fundsEndowing}("");
+
+        if(sent) 
+        {
+            fund.fundCollected = fund.fundCollected + fundsEndowing;
+        }
+    }
+
+    function getBenefactors(uint256 _id) view public returns (address[] memory, uint256[] memory) 
+    {
+        return (funds[_id].benefactors, funds[_id].endowments);
+    }
+}
